@@ -25,7 +25,7 @@ The following is stored in a specified directory:
 """ 
 
 
-#TEST OK
+
 ##################
 # HDF5 functions #
 ##################
@@ -191,7 +191,7 @@ def gathering_MC_results_in_one_hdf5_file(path_for_saving):
         
         #Clean incomplete iterations before gathering 
         child_hdf5_file=h5py.File(child_file_path,'a')
-        clean_hdf5_file_MC_results(child_hdf5_file,child_file_path)
+        clean_hdf5_file_MC_results(child_hdf5_file,child_file_path.rsplit('\\', 1)[1])
         child_hdf5_file.close()
         
         child_hdf5_file=h5py.File(child_file_path,'r')
@@ -231,6 +231,9 @@ def gathering_MC_results_in_one_hdf5_file(path_for_saving):
     
         for (child_dataset_path, dset) in h5py_dataset_iterator(child_hdf5_file):
             
+            #Create the master path
+            master_dataset_path=child_dataset_path
+            
             #Link child data to master file
             hdf5_file_all_MC_results[master_dataset_path] = h5py.ExternalLink(child_file_path, child_dataset_path)
         
@@ -246,7 +249,6 @@ def gathering_MC_results_in_one_hdf5_file(path_for_saving):
     
 
 #Dependant LCI Monte Carlo for each activity and functional unit defined in functional_units = [{act.key: FU}]
-#TEST OK
 def worker_process(project, job_id, worker_id, functional_units, iterations,path_for_saving):
     
     #Open the HDF5 file for each worker
@@ -382,7 +384,7 @@ def get_useful_info(collector_functional_unit, hdf5_file_useful_info_per_DB, job
 @click.option('--output_dir', help='Output directory path', type=str)
 
 
-#TEST OK except for multiprocessing
+
 #Create and save useful information during Dependant LCI MC : database objects (_dict, activities, _params, reverse_dict), iteration objects (_sample, i.e. A and B _matrix), act/iteration objects (supply_array)    
 def main(project, database, iterations, cpus, output_dir):
     
@@ -418,10 +420,6 @@ def main(project, database, iterations, cpus, output_dir):
         hdf5_file_useful_info_per_DB=h5py.File(hdf5_file_useful_info_per_DB_path,'a')
 
         #Create and save all the useful information related to the database only
-        ##os.chdir(BASE_OUTPUT_DIR)
-        ##job_dir = os.path.join(BASE_OUTPUT_DIR, job_id)
-        ##os.mkdir(job_dir)
-
         get_useful_info(collector_functional_unit, hdf5_file_useful_info_per_DB, job_id, activities)
 
         hdf5_file_useful_info_per_DB.close()
@@ -447,8 +445,6 @@ def main(project, database, iterations, cpus, output_dir):
         workers.append(child)
         child.start()
         
-    gathering_MC_results_in_one_hdf5_file(path_for_saving)
-
     return;
       
         
