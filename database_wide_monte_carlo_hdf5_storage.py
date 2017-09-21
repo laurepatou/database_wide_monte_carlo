@@ -296,13 +296,21 @@ def worker_process(project, job_id, worker_id, functional_units, iterations,path
         write_LCA_obj_to_HDF5_file(lca.biosphere_matrix,hdf5_file_MC_results,group_path_bio)
         hdf5_file_MC_results[group_path_techno].attrs['Creation ID']=job_id
         hdf5_file_MC_results[group_path_bio].attrs['Creation ID']=job_id
+        
+        #Size_A_MB=(hdf5_file_MC_results[group_path_techno+'/data'].id.get_storage_size()+
+                   hdf5_file_MC_results[group_path_techno+'/indptr'].id.get_storage_size()+
+                   hdf5_file_MC_results[group_path_techno+'/indices'].id.get_storage_size())/1000000
+        #Size_B_MB=(hdf5_file_MC_results[group_path_bio+'/data'].id.get_storage_size()+
+                   hdf5_file_MC_results[group_path_bio+'/indptr'].id.get_storage_size()+
+                   hdf5_file_MC_results[group_path_bio+'/indices'].id.get_storage_size())/1000000
+        
 
 
         #For calculation
         lca.decompose_technosphere()
 
         end_1 = time.time()
-        #print("Calcul et sauvegarde A et B en {} secondes".format(end_1 - start_1)) 
+        #print("Calcul et sauvegarde A et B en {} secondes for iteration {}, and the storage size is A={}MB and B={}MB".format(end_1 - start_1,iteration,Size_A_MB,Size_B_MB)) 
 
         #Create and save objects per activity/iteration --> Per iteration and activity: supply_array=0.04MB, creation time=0.01sec (except for the first activity=0.5sec)
         for act_index, fu in enumerate(functional_units):
@@ -324,7 +332,7 @@ def worker_process(project, job_id, worker_id, functional_units, iterations,path
             hdf5_file_MC_results[group_path_supply].attrs['Creation ID']=job_id
 
             end_2 = time.time()
-            #print("Calcul et sauvegarde s en {} secondes".format(end_2 - start_2)) 
+            #print("Calcul et sauvegarde s en {} secondes for iteration {} and activity {}, and the storage size is s={}MB".format(end_2 - start_2,iteration,actKey,hdf5_file_MC_results[group_path_supply].id.get_storage_size()/1000000)) 
 
         #Count the number of complete iterations
         complete_iterations=iteration_name+1
