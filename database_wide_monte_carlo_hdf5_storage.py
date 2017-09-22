@@ -45,14 +45,13 @@ def csr_matrix_to_hdf5(csr,hdf5_file,group_path):
     group.create_dataset('data',data=csr.data,compression="gzip",dtype=np.float32)
     group.create_dataset('indptr',data=csr.indptr,compression="gzip")
     group.create_dataset('indices',data=csr.indices,compression="gzip")
-    
-    group.attrs['shape']=csr.shape
+    group.create_dataset('shape',data=csr.shape)
+
     
     return;
 
 
 #function to create list to store in hfd5 for LCA object _dict: biosphere_dict, activity_dict, product_dict
-
 def LCA_dict_to_hdf5(LCA_dict,hdf5_file,group_path):
     
     # Retrieve or create the groups and subgroups
@@ -63,17 +62,33 @@ def LCA_dict_to_hdf5(LCA_dict,hdf5_file,group_path):
     #### Use .decode('UTF-8') to convert keys_1_list items for bytes to str
     
     
-    keys_0=[key[0] for key in LCA_dict.keys()][0]
+    keys_0=np.string_([key[0] for key in LCA_dict.keys()][0])
     keys_1_list=np.string_([key[1] for key in LCA_dict.keys()])
     items_list=[item for item in LCA_dict.values()]
     
     # Create datasets containing values of csr matrix
     group.create_dataset('keys_1',data=keys_1_list,compression="gzip")
     group.create_dataset('values',data=items_list,compression="gzip")
-    group.attrs['keys_0']=keys_0
+    group.create_dataset('keys_0',data=keys_0)
 
-    
     return;
+
+
+#function to create list to store in hfd5 for LCA object _***_dict: _biosphere_dict, _activity_dict, _product_dict
+def _LCA_dict_to_hdf5(LCA_dict,hdf5_file,group_path):
+    
+    # Retrieve or create the groups and subgroups
+    group=hdf5_file.require_group(group_path)  
+    
+    keys=[key for key in LCA_dict.keys()]
+    values=[item for item in LCA_dict.values()]
+    
+    # Create datasets containing values of csr matrix
+    group.create_dataset('keys',data=keys,compression="gzip")
+    group.create_dataset('values',data=values,compression="gzip")
+
+    return;
+
 
 
 #Function to write csr matrix, _dict from LCA objects and any numpy.ndarray
@@ -81,6 +96,7 @@ def LCA_dict_to_hdf5(LCA_dict,hdf5_file,group_path):
 def write_LCA_obj_to_HDF5_file(LCA_obj,hdf5_file,group_path):
     
     dict_names_to_check=['biosphere_dict', 'activity_dict', 'product_dict']
+    _dict_names_to_check=['_biosphere_dict', '_activity_dict', '_product_dict']
     
     #If object = A or B matrix
     if type(LCA_obj)==sp.sparse.csr.csr_matrix:
@@ -94,10 +110,14 @@ def write_LCA_obj_to_HDF5_file(LCA_obj,hdf5_file,group_path):
         group.create_dataset('data',data=LCA_obj.data,compression="gzip",dtype=np.float32)
         group.create_dataset('indptr',data=LCA_obj.indptr,compression="gzip")
         group.create_dataset('indices',data=LCA_obj.indices,compression="gzip")
+        group.create_dataset('shape',data=LCA_obj.shape)
 
-        group.attrs['shape']=LCA_obj.shape
         ######
         
+        
+    #If object = _***_dict
+    elif group_path.rsplit('/', 1)[1] in _dict_names_to_check:
+        _LCA_dict_to_hdf5(LCA_obj,hdf5_file,group_path)    
         
     
     #If object = ***_dict
@@ -297,12 +317,8 @@ def worker_process(project, job_id, worker_id, functional_units, iterations,path
         hdf5_file_MC_results[group_path_techno].attrs['Creation ID']=job_id
         hdf5_file_MC_results[group_path_bio].attrs['Creation ID']=job_id
         
-        #Size_A_MB=(hdf5_file_MC_results[group_path_techno+'/data'].id.get_storage_size()+
-                   hdf5_file_MC_results[group_path_techno+'/indptr'].id.get_storage_size()+
-                   hdf5_file_MC_results[group_path_techno+'/indices'].id.get_storage_size())/1000000
-        #Size_B_MB=(hdf5_file_MC_results[group_path_bio+'/data'].id.get_storage_size()+
-                   hdf5_file_MC_results[group_path_bio+'/indptr'].id.get_storage_size()+
-                   hdf5_file_MC_results[group_path_bio+'/indices'].id.get_storage_size())/1000000
+        #Size_A_MB=(hdf5_file_MC_results[group_path_techno+'/data'].id.get_storage_size()+hdf5_file_MC_results[group_path_techno+'/indptr'].id.get_storage_size()+hdf5_file_MC_results[group_path_techno+'/indices'].id.get_storage_size())/1000000
+        #Size_B_MB=(hdf5_file_MC_results[group_path_bio+'/data'].id.get_storage_size()+hdf5_file_MC_results[group_path_bio+'/indptr'].id.get_storage_size()+hdf5_file_MC_results[group_path_bio+'/indices'].id.get_storage_size())/1000000
         
 
 
@@ -355,8 +371,11 @@ def get_useful_info(collector_functional_unit, hdf5_file_useful_info_per_DB, job
     
     #Get data to store 
     product_dict=sacrificial_lca.product_dict
+    _product_dict=sacrificial_lca._product_dict
     biosphere_dict=sacrificial_lca.biosphere_dict
+    _biosphere_dict=sacrificial_lca._biosphere_dict
     activity_dict=sacrificial_lca.activity_dict
+    _activity_dict=sacrificial_lca._activity_dict
     tech_params=sacrificial_lca.tech_params
     bio_params=sacrificial_lca.bio_params
     activities_keys=np.string_([act.key[1] for act in activities])
@@ -371,8 +390,11 @@ def get_useful_info(collector_functional_unit, hdf5_file_useful_info_per_DB, job
     hdf5_file_useful_info_per_DB.attrs['Description']='HDF5 file containing all useful information related to the database in order to use dependant Monte Carlo results'
     
     write_LCA_obj_to_HDF5_file(product_dict,hdf5_file_useful_info_per_DB,'/product_dict')
+    write_LCA_obj_to_HDF5_file(_product_dict,hdf5_file_useful_info_per_DB,'/_product_dict')
     write_LCA_obj_to_HDF5_file(biosphere_dict,hdf5_file_useful_info_per_DB,'/biosphere_dict')
+    write_LCA_obj_to_HDF5_file(_biosphere_dict,hdf5_file_useful_info_per_DB,'/_biosphere_dict')
     write_LCA_obj_to_HDF5_file(activity_dict,hdf5_file_useful_info_per_DB,'/activity_dict')
+    write_LCA_obj_to_HDF5_file(_activity_dict,hdf5_file_useful_info_per_DB,'/_activity_dict')
     write_LCA_obj_to_HDF5_file(tech_params,hdf5_file_useful_info_per_DB,'/tech_params')
     write_LCA_obj_to_HDF5_file(bio_params,hdf5_file_useful_info_per_DB,'/bio_params')
     write_LCA_obj_to_HDF5_file(activities_keys,hdf5_file_useful_info_per_DB,'/activities_keys')
@@ -384,17 +406,17 @@ def get_useful_info(collector_functional_unit, hdf5_file_useful_info_per_DB, job
 
 
 #Useful when the code is run from the console to pass arguments to the main function
-@click.command()
-@click.option('--project', default='default', help='Brightway2 project name', type=str)
-@click.option('--database', help='Database name', type=str)
-@click.option('--iterations', default=1000, help='Number of Monte Carlo iterations', type=int)
-@click.option('--cpus', default=mp.cpu_count(), help='Number of used CPU cores', type=int)
-@click.option('--output_dir', help='Output directory path', type=str)
+#@click.command()
+#@click.option('--project', default='default', help='Brightway2 project name', type=str)
+#@click.option('--database', help='Database name', type=str)
+#@click.option('--iterations', default=1000, help='Number of Monte Carlo iterations', type=int)
+#@click.option('--cpus', default=mp.cpu_count(), help='Number of used CPU cores', type=int)
+#@click.option('--output_dir', help='Output directory path', type=str)
 
 
 
 #Create and save useful information during Dependant LCI MC : database objects (_dict, activities, _params, reverse_dict), iteration objects (_sample, i.e. A and B _matrix), act/iteration objects (supply_array)    
-def main(project, database, iterations, cpus, output_dir):
+def Dependant_LCI_Monte_Carlo_results(project, database, iterations, cpus, output_dir):
     
     projects.set_current(project)
     bw2setup()
@@ -459,4 +481,8 @@ def main(project, database, iterations, cpus, output_dir):
         
 #Useful when the code is run from the console to execute the main function
 if __name__ == '__main__':
-    main()
+    Dependant_LCI_Monte_Carlo_results(project="iw_integration",
+                                      database="ecoinvent 3.3 cutoff",
+                                      iterations=10,
+                                      cpus=4,
+                                      output_dir="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Test Dependant LCI Monte Carlo - test 3")
