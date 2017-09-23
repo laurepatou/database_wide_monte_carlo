@@ -161,16 +161,19 @@ def h5py_dataset_iterator(g, prefix=''):
             yield from h5py_dataset_iterator(item, path)
 
             
-def append_scalar_to_list_hdf5_dataset(hdf5_file,dataset_path,value):
+#Create a dataset and append an np array to the dataset 1d in hdf5            
+def append_to_list_hdf5_dataset(hdf5_file,dataset_path,value):
+    
+    #value is a scalar or a list or np array
     
     try:
         dataset=hdf5_file[dataset_path]
-        dataset.resize((dataset.shape[0]+1,))
-        dataset[-1] = value
+        dataset.resize((dataset.shape[0]+len(value),))
+        dataset[-len(value):] = value
     except:
-        hdf5_file.create_dataset(dataset_path,shape=(1,), maxshape=(None,))
+        hdf5_file.create_dataset(dataset_path,shape=(len(value),), maxshape=(None,))
         dataset=hdf5_file[dataset_path]
-        dataset[-1] = value
+        dataset[-len(value):] = value
         
     return;
 
@@ -183,9 +186,12 @@ def append_scalar_to_list_hdf5_dataset(hdf5_file,dataset_path,value):
 #Clean the HDF5 file with LCA MC results for not complete iterations (i.e. not all activities calculated for the last iteration)
 def clean_hdf5_file_MC_LCA_results(hdf5_file_MC_results,worker_id):
     
+    disaggregated_root_file_name='LCA_Dependant_Monte_Carlo_disaggregated_results'
+    aggregated_root_file_name='LCA_Dependant_Monte_Carlo_aggregated_results'
+    
     complete_iterations=int(hdf5_file_MC_results.attrs['Number of complete iterations'])
     
-    if "LCA_Dependant_Monte_Carlo_aggregated_results" in hdf5_file_MC_results.filename:
+    if aggregated_root_file_name in hdf5_file_MC_results.filename:
         for (dataset_path, dset) in h5py_dataset_iterator(hdf5_file_MC_results):
             if '/lci_iteration_name_list' not in dataset_path:
                 results_iterations=dset.size
@@ -194,11 +200,11 @@ def clean_hdf5_file_MC_LCA_results(hdf5_file_MC_results,worker_id):
                     print('--Incomplete iterations for LCA results removed for worker {} for {}'.format(worker_id,dataset_path))
                     
                 
-    elif "LCA_Dependant_Monte_Carlo_disaggregated_results" in hdf5_file_MC_results.filename:
-        for uncertainty_level in hdf5_file_MC_results.items:
+    elif disaggregated_root_file_name in hdf5_file_MC_results.filename:
+        for uncertainty_level in hdf5_file_MC_results.items():
             if 'lci_iteration_name_list' not in uncertainty_level[0]:
-                for act in uncertainty_level[1]:
-                    for impact_method in act[1]:
+                for act in uncertainty_level[1].items():
+                    for impact_method in act[1].items():
                         results_iterations=len(impact_method[1])
                         if results_iterations!=complete_iterations:
                             iteration_name_to_delete=results_iterations-1
@@ -208,8 +214,8 @@ def clean_hdf5_file_MC_LCA_results(hdf5_file_MC_results,worker_id):
     return;
 
 
-#Create a file that gather all MC results and Useful info in one file
-def gathering_MC_results_in_one_hdf5_file(path_for_saving,results_disaggregated_or_not):
+#Create a file that gather all MC results and Useful info in one file --> Copy of the results for aggregated results!
+def gathering_MC_results_in_one_hdf5_file(path_for_saving):
     
     disaggregated_root_file_name='LCA_Dependant_Monte_Carlo_disaggregated_results'
     aggregated_root_file_name='LCA_Dependant_Monte_Carlo_aggregated_results'
@@ -217,86 +223,66 @@ def gathering_MC_results_in_one_hdf5_file(path_for_saving,results_disaggregated_
     root_file_name_list=[aggregated_root_file_name,disaggregated_root_file_name]
     
     for root_file_name in root_file_name_list:
-    
-    
-    #Create the gathering file
-    if results_disaggregated_or_not == "disaggregated":
-        hdf5_file_all_MC_results=h5py.File(path_for_saving+'\\'+disaggregated_root_file_name+'_ALL.hdf5','w-')
-        
-    else:
-        hdf5_file_all_MC_results=h5py.File(path_for_saving+'\\'+aggregated_root_file_name+'_ALL.hdf5','w-')
-    
-    #Retrieve child file paths
-    child_hdf5_file_paths = [os.path.join(path_for_saving,fn) for fn in next(os.walk(path_for_saving))[2] if '.hdf5' in fn]
-    child_MC_results_paths=[path for path in child_hdf5_file_paths if 'LCI_Dependant_Monte_Carlo_results_worker' in path]
-    child_DB_info_paths=[path for path in child_hdf5_file_paths if 'Useful_info_per_DB' in path]
-    
-    #Gathering MC results
-    complete_iterations=0
-    
-    for child_file_path in child_MC_results_paths:
-        
-        #Clean incomplete iterations before gathering 
-        child_hdf5_file=h5py.File(child_file_path,'a')
-        clean_hdf5_file_MC_results(child_hdf5_file,child_file_path.rsplit('\\', 1)[1])
-        child_hdf5_file.close()
-        
-        child_hdf5_file=h5py.File(child_file_path,'r')
-    
-        for (child_dataset_path, dset) in h5py_dataset_iterator(child_hdf5_file):
-            
-            #For supply array
-            if 'supply_array' in child_dataset_path:
-            
-                #Create similar path for the master file
-                child_iteration_name=child_dataset_path.rsplit('/', 1)[1]
-                master_iteration_name=str(int(child_iteration_name)+complete_iterations)
-                master_dataset_path=child_dataset_path.rsplit('/', 1)[0]+'/'+master_iteration_name
 
-                #Link child data to master file
-                hdf5_file_all_MC_results[master_dataset_path] = h5py.ExternalLink(child_file_path, child_dataset_path)
-             
-            #For A and B matrix
-            else:
-                #Create similar path for the master file
-                child_iteration_name=child_dataset_path.rsplit('/', 2)[1]
-                master_iteration_name=str(int(child_iteration_name)+complete_iterations)
-                master_dataset_path=child_dataset_path.rsplit('/', 2)[0]+'/'+master_iteration_name+'/'+child_dataset_path.rsplit('/', 2)[2]
+        #Retrieve child file paths
+        child_hdf5_file_paths = [os.path.join(path_for_saving,fn) for fn in next(os.walk(path_for_saving))[2] if '.hdf5' in fn]
+        child_MC_results_paths=[path for path in child_hdf5_file_paths if root_file_name+'_worker' in path]
 
-                #Link child data to master file
-                hdf5_file_all_MC_results[master_dataset_path] = h5py.ExternalLink(child_file_path, child_dataset_path)
+        if child_MC_results_paths!=[]:
+        
+            #Create the gathering file
+            hdf5_file_all_MC_results=h5py.File(path_for_saving+'\\'+root_file_name+'_ALL.hdf5','w')
 
-        complete_iterations=complete_iterations+int(child_hdf5_file.attrs['Number of complete iterations'])
-        child_hdf5_file.close()
-        
-    hdf5_file_all_MC_results.attrs['Number of complete iterations']=complete_iterations
-    
-    #Useful info
-    for child_file_path in child_DB_info_paths:
-        
-        child_hdf5_file=h5py.File(child_file_path,'r')
-    
-        for (child_dataset_path, dset) in h5py_dataset_iterator(child_hdf5_file):
-            
-            #Create the master path
-            master_dataset_path=child_dataset_path
-            
-            #Link child data to master file
-            hdf5_file_all_MC_results[master_dataset_path] = h5py.ExternalLink(child_file_path, child_dataset_path)
-        
-        db_name=child_hdf5_file.attrs['Database name']
-        child_hdf5_file.close()
-        
-    hdf5_file_all_MC_results.attrs['Database name']=db_name
-    
-    hdf5_file_all_MC_results.close()
+            #Gathering MC results
+            complete_iterations=0
+
+            for child_file_path in child_MC_results_paths:
+
+                #Clean incomplete iterations before gathering 
+                child_hdf5_file=h5py.File(child_file_path,'a')
+                clean_hdf5_file_MC_LCA_results(child_hdf5_file,child_file_path.rsplit('\\', 1)[1])
+                child_hdf5_file.close()
+
+                child_hdf5_file=h5py.File(child_file_path,'r')
+                
+                if disaggregated_root_file_name in child_file_path:
+
+                    for (child_dataset_path, dset) in h5py_dataset_iterator(child_hdf5_file):
+                        
+                        if 'lci_iteration_name_list' in child_dataset_path:
+                            master_dataset_path=child_dataset_path
+                            append_to_list_hdf5_dataset(hdf5_file_all_MC_results,master_dataset_path,dset[()])
+                            
+                        else:
+                            #Create similar path for the master file
+                            child_iteration_name=child_dataset_path.rsplit('/', 2)[1]
+                            master_iteration_name=str(int(child_iteration_name)+complete_iterations)
+                            master_dataset_path=child_dataset_path.rsplit('/', 2)[0]+'/'+master_iteration_name+'/'+child_dataset_path.rsplit('/', 2)[2]
+
+                            #Link child data to master file
+                            hdf5_file_all_MC_results[master_dataset_path] = h5py.ExternalLink(child_file_path, child_dataset_path)
+
+                        
+                elif aggregated_root_file_name in child_file_path:
+
+                    for (child_dataset_path, dset) in h5py_dataset_iterator(child_hdf5_file):       
+                        
+                        #Not external links --> Copy of the results!
+                        master_dataset_path=child_dataset_path
+                        append_to_list_hdf5_dataset(hdf5_file_all_MC_results,master_dataset_path,dset[()])
+                        
+                complete_iterations=complete_iterations+int(child_hdf5_file.attrs['Number of complete iterations'])
+                db_name=child_hdf5_file.attrs['Database name']
+                child_hdf5_file.close()
+                
+            hdf5_file_all_MC_results.attrs['Number of complete iterations']=complete_iterations
+            hdf5_file_all_MC_results.attrs['Database name']=db_name
+
+            hdf5_file_all_MC_results.close()
+                           
         
     return;
     
-    
-
-
-
 
 #Dependant LCA Monte Carlo for each activity and functional unit defined in functional_units = [{act.key: 1}]
 def worker_process(project, 
@@ -311,6 +297,8 @@ def worker_process(project,
                    hdf5_file_MC_LCA_results_disaggregated_path,
                    impact_method_name_list,
                    results_disaggregated_or_not):
+    
+    start_1 = time.time()
     
     projects.set_current(project)
     
@@ -370,12 +358,18 @@ def worker_process(project,
         impact_method_dict[impact_method_name]['characterization_matrix_deterministic']=characterization_matrix
     
    
-       
+    end_1 = time.time()
+    print("Work per worker en {} secondes ".format(end_1 - start_1))
+    
     #LCA iterations
     for iteration in range(iterations):
         
+        start_2 = time.time()
+        
         #Name of the iteration for the storage, starts from 0
         lca_iteration_name=lca_complete_iterations
+        
+        print('--Starting job for worker {}, iteration {}, stored as {}'.format(worker_id, iteration,lca_iteration_name))
         
         #Randomly choose an LCI iteration
         lci_iteration_name=random.randint(0,lci_complete_iterations-1)
@@ -402,8 +396,13 @@ def worker_process(project,
                 characterization_matrix_array=np.array(characterization_matrix.sum(1))
                 characterization_matrix_dict[impact_method_name]=characterization_matrix_array
             
+        end_2 = time.time()
+        print("Work per iteration en {} secondes for iteration {} ".format(end_2 - start_2, iteration))    
+            
         #Iterations per activity
         for act_index, fu in enumerate(functional_units):
+            
+            start_3 = time.time()
 
             #Creating UUID for each activity
             actKey = list(fu.keys())[0][1]
@@ -412,10 +411,12 @@ def worker_process(project,
             #Retrieve the inventory for uncertainty LCI 0
             if results_disaggregated_or_not == "disaggregated":
                 inventory_lci0_path='/inventory/'+actKey+'/disaggregated'
+                inventory_lci0=hdf5_to_csr_matrix(hdf5_file_deterministic_lci,inventory_lci0_path)
             else:
                 inventory_lci0_path='/inventory/'+actKey+'/aggregated'
+                inventory_lci0=hdf5_file_deterministic_lci[inventory_lci0_path][()]
 
-            inventory_lci0=hdf5_file_deterministic_lci[inventory_lci0_path][()]
+            
             
             
             #Retrieve supply_array for uncertainty LCI 1
@@ -433,9 +434,14 @@ def worker_process(project,
 
                 inventory = biosphere_matrix * supply_array 
             
+            end_3 = time.time()
+            print("Work per activity/iteration en {} secondes for iteration {} for activity {} ".format(end_3 - start_3, iteration, actKey))    
+            
             
             #Calculate impact scores for all impact categories and Store impact_score
             for impact_method_name in characterization_matrix_dict:
+                
+                start_4 = time.time()
                 
                 characterization_matrix=characterization_matrix_dict[impact_method_name]
                 characterization_matrix_lcia0=impact_method_dict[impact_method_name]['characterization_matrix_deterministic']
@@ -470,22 +476,26 @@ def worker_process(project,
                     #Uncertainty LCI 1 LCIA 1
                     characterization_matrix=np.reshape(characterization_matrix,characterization_matrix.shape[0])
                     impact_score= np.dot(characterization_matrix, inventory)
-                    append_scalar_to_list_hdf5_dataset(hdf5_file_MC_LCA_results,impact_score_path,impact_score)
+                    append_to_list_hdf5_dataset(hdf5_file_MC_LCA_results,impact_score_path,np.atleast_1d(impact_score))
                     
                     #Uncertainty LCI 1 LCIA 0
                     characterization_matrix_lcia0=np.array(characterization_matrix_lcia0.sum(1))
-                    characterization_matrix_lcia0=np.reshape(characterization_matrix_lcia0,characterization_matrix_lcia0.shape[0])
+                    characterization_matrix_lcia0= np.reshape(characterization_matrix_lcia0, characterization_matrix_lcia0.shape[0])
                     impact_score_lcia0= np.dot(characterization_matrix_lcia0, inventory)
-                    append_scalar_to_list_hdf5_dataset(hdf5_file_MC_LCA_results,impact_score_lcia0_path,impact_score_lcia0)
+                    append_to_list_hdf5_dataset(hdf5_file_MC_LCA_results, impact_score_lcia0_path, np.atleast_1d(impact_score_lcia0))
                     
                     #Uncertainty LCI 0 LCIA 1
                     impact_score_lci0_lcia1= np.dot(characterization_matrix, inventory_lci0)
-                    append_scalar_to_list_hdf5_dataset(hdf5_file_MC_LCA_results,impact_score_lci0_lcia1_path,impact_score_lci0_lcia1)
+                    append_to_list_hdf5_dataset(hdf5_file_MC_LCA_results, impact_score_lci0_lcia1_path, np.atleast_1d(impact_score_lci0_lcia1))
+                    
+                end_4 = time.time()
+                print("Work per impact method/activity/iteration en {} secondes for iteration {} for activity {} for impact method {}".format(end_4 - start_4, iteration, actKey, impact_method_name))    
+            
                         
             
         #Store the list of iteration names from LCI
         lci_iteration_name_list_path='/lci_iteration_name_list'
-        append_scalar_to_list_hdf5_dataset(hdf5_file_MC_LCA_results,lci_iteration_name_list_path,lci_iteration_name)
+        append_to_list_hdf5_dataset(hdf5_file_MC_LCA_results,lci_iteration_name_list_path,np.atleast_1d(lci_iteration_name))
         
         
         #Count the number of complete iterations for LCA results
@@ -493,6 +503,17 @@ def worker_process(project,
         hdf5_file_MC_LCA_results.attrs['Number of complete iterations']= lca_complete_iterations
             
                         
+    #Size of stored objects
+    if results_disaggregated_or_not == "disaggregated":
+        group_path_techno=impact_score_path
+        hdf5_file_MC_results=hdf5_file_MC_LCA_results
+        size_results=(hdf5_file_MC_results[group_path_techno+'/data'].id.get_storage_size()+hdf5_file_MC_results[group_path_techno+'/indptr'].id.get_storage_size()+hdf5_file_MC_results[group_path_techno+'/indices'].id.get_storage_size())/1000000
+        print("Size of stored disaggregated results = {} MB for one impact method/activity/iteration ".format(size_results))
+    else: 
+        size_results=hdf5_file_MC_LCA_results[impact_score_path].id.get_storage_size()/1000000
+        print("Size of stored aggregated results = {} MB for {} complete iterations for one impact method/activity ".format(size_results, lca_complete_iterations))
+
+    
     hdf5_file_deterministic_lci.close()
     hdf5_file_MC_LCI_results.close()
     hdf5_file_MC_LCA_results.close()
@@ -624,16 +645,16 @@ def Dependant_LCA_Monte_Carlo_results(project,
         child.start()
         
     return;
-      
-        
+         
         
 #Useful when the code is run from the console to execute the main function
 if __name__ == '__main__':
     Dependant_LCA_Monte_Carlo_results(project="iw_integration", 
                                       database="ecoinvent 3.3 cutoff", 
-                                      iterations=10, 
-                                      cpus=4, 
+                                      iterations=5, 
+                                      cpus=1, 
                                       hdf5_file_MC_LCI_results_path="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Test Dependant LCI Monte Carlo - test 3\\LCI_Dependant_Monte_Carlo_results_ALL.hdf5", 
-                                      path_for_saving="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Test Dependant LCA Monte Carlo",
+                                      path_for_saving="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Test Dependant LCA Monte Carlo - test 1",
                                       impact_method_name_list=[("CML 2001", "climate change", "GWP 100a"),("CML 2001", "eutrophication potential", "generic")],
-                                      results_disaggregated_or_not="aggregated")
+                                      results_disaggregated_or_not="disaggregated")
+
