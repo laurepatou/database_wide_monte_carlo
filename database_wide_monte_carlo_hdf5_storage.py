@@ -172,12 +172,12 @@ def clean_hdf5_file_MC_results(hdf5_file_MC_results,worker_id):
     if techno_iterations!=complete_iterations:
         iteration_name_to_delete=techno_iterations-1
         del techno_group[str(iteration_name_to_delete)]
-        print('--Incomplete iterations for A removed for worker {}'.format(worker_id))
+        #print('--Incomplete iterations for A removed for worker {}'.format(worker_id))
 
     if bio_iterations!=complete_iterations:
         iteration_name_to_delete=bio_iterations-1
         del bio_group[str(iteration_name_to_delete)]
-        print('--Incomplete iterations for B removed for worker {}'.format(worker_id))
+        #print('--Incomplete iterations for B removed for worker {}'.format(worker_id))
 
     #Clean supply arrays for not complete iterations
     supply_array_group=hdf5_file_MC_results['/supply_array']
@@ -189,15 +189,17 @@ def clean_hdf5_file_MC_results(hdf5_file_MC_results,worker_id):
         if supply_act_iterations!=complete_iterations:
             iteration_name_to_delete=supply_act_iterations-1
             del supply_array_group[act][str(iteration_name_to_delete)]
-            print('--Incomplete iterations for supply_array removed for worker {} for activity {}'.format(worker_id,act))
+            #print('--Incomplete iterations for supply_array removed for worker {} for activity {}'.format(worker_id,act))
             
     return;
 
 #Create a file that gather all MC results and Useful info in one file
 def gathering_MC_results_in_one_hdf5_file(path_for_saving):
     
+    
     #Create the gathering file
-    hdf5_file_all_MC_results=h5py.File(path_for_saving+'\\LCI_Dependant_Monte_Carlo_results_ALL.hdf5','w-')
+    hdf5_file_all_MC_results_path=os.path.join(path_for_saving,'LCI_Dependant_Monte_Carlo_results_ALL.hdf5')
+    hdf5_file_all_MC_results=h5py.File(hdf5_file_all_MC_results_path,'w-')
     
     #Retrieve child file paths
     child_hdf5_file_paths = [os.path.join(path_for_saving,fn) for fn in next(os.walk(path_for_saving))[2] if '.hdf5' in fn]
@@ -209,10 +211,19 @@ def gathering_MC_results_in_one_hdf5_file(path_for_saving):
     
     for child_file_path in child_MC_results_paths:
         
+        worker_id=child_file_path.rsplit('LCI_Dependant_Monte_Carlo_results_worker', 1)[1]
+        
+        start_1 = time.time()
+        
         #Clean incomplete iterations before gathering 
-        child_hdf5_file=h5py.File(child_file_path,'a')
-        clean_hdf5_file_MC_results(child_hdf5_file,child_file_path.rsplit('\\', 1)[1])
+        child_hdf5_file=h5py.File(child_file_path,'r+')
+        clean_hdf5_file_MC_results(child_hdf5_file,worker_id)
         child_hdf5_file.close()
+        
+        end_1 = time.time()
+        print("Cleaning in {} secondes for entire DB for worker {}".format(end_1 - start_1,worker_id)) 
+
+        start_2 = time.time()
         
         child_hdf5_file=h5py.File(child_file_path,'r')
     
@@ -224,7 +235,7 @@ def gathering_MC_results_in_one_hdf5_file(path_for_saving):
                 #Create similar path for the master file
                 child_iteration_name=child_dataset_path.rsplit('/', 1)[1]
                 master_iteration_name=str(int(child_iteration_name)+complete_iterations)
-                master_dataset_path=child_dataset_path.rsplit('/', 1)[0]+'/'+master_iteration_name
+                master_dataset_path='{}/{}'.format(child_dataset_path.rsplit('/', 1)[0],master_iteration_name)
 
                 #Link child data to master file
                 hdf5_file_all_MC_results[master_dataset_path] = h5py.ExternalLink(child_file_path, child_dataset_path)
@@ -234,13 +245,17 @@ def gathering_MC_results_in_one_hdf5_file(path_for_saving):
                 #Create similar path for the master file
                 child_iteration_name=child_dataset_path.rsplit('/', 2)[1]
                 master_iteration_name=str(int(child_iteration_name)+complete_iterations)
-                master_dataset_path=child_dataset_path.rsplit('/', 2)[0]+'/'+master_iteration_name+'/'+child_dataset_path.rsplit('/', 2)[2]
+                master_dataset_path='{}/{}/{}'.format(child_dataset_path.rsplit('/', 2)[0],master_iteration_name,child_dataset_path.rsplit('/', 2)[2])
 
                 #Link child data to master file
                 hdf5_file_all_MC_results[master_dataset_path] = h5py.ExternalLink(child_file_path, child_dataset_path)
 
         complete_iterations=complete_iterations+int(child_hdf5_file.attrs['Number of complete iterations'])
         child_hdf5_file.close()
+        
+        end_2 = time.time()
+        print("Gathering information in {} secondes for entire DB for {} iterations".format(end_2 - start_2,complete_iterations)) 
+
         
     hdf5_file_all_MC_results.attrs['Number of complete iterations']=complete_iterations
     
@@ -263,99 +278,116 @@ def gathering_MC_results_in_one_hdf5_file(path_for_saving):
     hdf5_file_all_MC_results.attrs['Database name']=db_name
     
     hdf5_file_all_MC_results.close()
+    
         
     return;
-    
-    
+   
 
 #Dependant LCI Monte Carlo for each activity and functional unit defined in functional_units = [{act.key: FU}]
 def worker_process(project, job_id, worker_id, functional_units, iterations,path_for_saving):
     
     #Open the HDF5 file for each worker
-    hdf5_file_name="LCI_Dependant_Monte_Carlo_results_worker"+str(worker_id)+".hdf5"
-    hdf5_file_MC_results_path=path_for_saving+"\\"+hdf5_file_name
+    hdf5_file_name="LCI_Dependant_Monte_Carlo_results_worker{}.hdf5".format(str(worker_id))
+    hdf5_file_MC_results_path="{}\\{}".format(path_for_saving,hdf5_file_name)
         
     hdf5_file_MC_results=h5py.File(hdf5_file_MC_results_path,'a')
     
-    #Retrieve the number of complete iterations (all activities calculated for one iteration)
     try:
-        complete_iterations=int(hdf5_file_MC_results.attrs['Number of complete iterations'])
-        print('--Previous number of complete iterations for worker {} is {}'.format(worker_id, complete_iterations))
-    except:
-        hdf5_file_MC_results.attrs['Number of complete iterations']=0
-        complete_iterations=0
-    
-    #Clean the HDF5 files for not complete iterations if needed
-    if complete_iterations>0:
-        clean_hdf5_file_MC_results(hdf5_file_MC_results,worker_id)
 
-    projects.set_current(project)
-    
-    #Creating the LCA object --> set fix_dictionaries=False as not useful here?
-    lca = DirectSolvingMonteCarloLCA(demand = functional_units[0])
-    lca.load_data()
-    
-    
-    #Create and save objects per iteration --> Per iteration: A=0.49MB, B=0.34MB, creation time for both=0.35sec 
-    for iteration in range(iterations):
+        #Retrieve the number of complete iterations (all activities calculated for one iteration)
+        try:
+            complete_iterations=int(hdf5_file_MC_results.attrs['Number of complete iterations'])
+            print('--Previous number of complete iterations for worker {} is {}'.format(worker_id, complete_iterations))
+        except:
+            hdf5_file_MC_results.attrs['Number of complete iterations']=0
+            complete_iterations=0
+
+        #Clean the HDF5 files for not complete iterations if needed
+        if complete_iterations>0:
+            clean_hdf5_file_MC_results(hdf5_file_MC_results,worker_id)
+
+        projects.set_current(project)
+
+        #Creating the LCA object --> set fix_dictionaries=False as not useful here?
+        lca = DirectSolvingMonteCarloLCA(demand = functional_units[0])
+        lca.load_data()
+
+        start_iteration = 0
+        end_iteration = 0
+
+        #Create and save objects per iteration --> Per iteration: A=0.49MB, B=0.34MB, creation time for both=0.35sec 
+        for iteration in range(iterations):
+
+            #Name of the iteration for the storage, starts from 0
+            iteration_name=complete_iterations
+
+            print('--Starting job for worker {}, iteration {}, stored as {}, previous complete iteration in {} min'.format(worker_id, iteration,iteration_name,(end_iteration-start_iteration)/60))
+
+            start_iteration = time.time()
+
+            #start_1 = time.time()
+            #Creating A and B matrix
+            lca.rebuild_technosphere_matrix(lca.tech_rng.next())
+            lca.rebuild_biosphere_matrix(lca.bio_rng.next())
+
+            #Saving A and B to HDF5 file
+            group_path_techno='/technosphere_matrix/{}'.format(str(iteration_name))
+            group_path_bio='/biosphere_matrix/{}'.format(str(iteration_name))
+            write_LCA_obj_to_HDF5_file(lca.technosphere_matrix,hdf5_file_MC_results,group_path_techno)
+            write_LCA_obj_to_HDF5_file(lca.biosphere_matrix,hdf5_file_MC_results,group_path_bio)
+            hdf5_file_MC_results[group_path_techno].attrs['Creation ID']=job_id
+            hdf5_file_MC_results[group_path_bio].attrs['Creation ID']=job_id
+
+            #Size_A_MB=(hdf5_file_MC_results[group_path_techno+'/data'].id.get_storage_size()+hdf5_file_MC_results[group_path_techno+'/indptr'].id.get_storage_size()+hdf5_file_MC_results[group_path_techno+'/indices'].id.get_storage_size())/1000000
+            #Size_B_MB=(hdf5_file_MC_results[group_path_bio+'/data'].id.get_storage_size()+hdf5_file_MC_results[group_path_bio+'/indptr'].id.get_storage_size()+hdf5_file_MC_results[group_path_bio+'/indices'].id.get_storage_size())/1000000
+
+
+
+            #For calculation
+            lca.decompose_technosphere()
+
+            #end_1 = time.time()
+            #print("Calcul et sauvegarde A et B en {} secondes for iteration {}, and the storage size is A={}MB and B={}MB".format(end_1 - start_1,iteration,Size_A_MB,Size_B_MB)) 
+
+            #Create and save objects per activity/iteration --> Per iteration and activity: supply_array=0.04MB, creation time=0.01sec (except for the first activity=0.5sec)
+            for act_index, fu in enumerate(functional_units):
+
+                #start_2 = time.time()
+
+                #Creating UUID for each activity
+                actKey = list(fu.keys())[0][1]
+
+                #Create demand_array
+                lca.build_demand_array(fu)
+
+                #Create supply_array
+                lca.supply_array = lca.solve_linear_system()
+
+                #Save supply_array to HDF5 file
+                group_path_supply='/supply_array/{}/{}'.format(actKey,str(iteration_name))
+                write_LCA_obj_to_HDF5_file(lca.supply_array,hdf5_file_MC_results,group_path_supply)
+                hdf5_file_MC_results[group_path_supply].attrs['Creation ID']=job_id
+
+                #end_2 = time.time()
+                #print("Calcul et sauvegarde s en {} secondes for iteration {} and activity {}, and the storage size is s={}MB".format(end_2 - start_2,iteration,actKey,hdf5_file_MC_results[group_path_supply].id.get_storage_size()/1000000)) 
+
+            #Count the number of complete iterations
+            complete_iterations=iteration_name+1
+            hdf5_file_MC_results.attrs['Number of complete iterations']= complete_iterations
+
+            end_iteration = time.time()
+
+
+        hdf5_file_MC_results.close()
         
-        #Name of the iteration for the storage, starts from 0
-        iteration_name=complete_iterations
-
-        print('--Starting job for worker {}, iteration {}, stored as {}'.format(worker_id, iteration,iteration_name))        
-
-        start_1 = time.time()
-        #Creating A and B matrix
-        lca.rebuild_technosphere_matrix(lca.tech_rng.next())
-        lca.rebuild_biosphere_matrix(lca.bio_rng.next())
-
-        #Saving A and B to HDF5 file
-        group_path_techno='/technosphere_matrix/'+str(iteration_name)
-        group_path_bio='/biosphere_matrix/'+str(iteration_name)
-        write_LCA_obj_to_HDF5_file(lca.technosphere_matrix,hdf5_file_MC_results,group_path_techno)
-        write_LCA_obj_to_HDF5_file(lca.biosphere_matrix,hdf5_file_MC_results,group_path_bio)
-        hdf5_file_MC_results[group_path_techno].attrs['Creation ID']=job_id
-        hdf5_file_MC_results[group_path_bio].attrs['Creation ID']=job_id
+    except (KeyboardInterrupt, SystemExit):
         
-        #Size_A_MB=(hdf5_file_MC_results[group_path_techno+'/data'].id.get_storage_size()+hdf5_file_MC_results[group_path_techno+'/indptr'].id.get_storage_size()+hdf5_file_MC_results[group_path_techno+'/indices'].id.get_storage_size())/1000000
-        #Size_B_MB=(hdf5_file_MC_results[group_path_bio+'/data'].id.get_storage_size()+hdf5_file_MC_results[group_path_bio+'/indptr'].id.get_storage_size()+hdf5_file_MC_results[group_path_bio+'/indices'].id.get_storage_size())/1000000
+        hdf5_file_MC_results.flush()
+        hdf5_file_MC_results.close()
         
-
-
-        #For calculation
-        lca.decompose_technosphere()
-
-        end_1 = time.time()
-        #print("Calcul et sauvegarde A et B en {} secondes for iteration {}, and the storage size is A={}MB and B={}MB".format(end_1 - start_1,iteration,Size_A_MB,Size_B_MB)) 
-
-        #Create and save objects per activity/iteration --> Per iteration and activity: supply_array=0.04MB, creation time=0.01sec (except for the first activity=0.5sec)
-        for act_index, fu in enumerate(functional_units):
-
-            start_2 = time.time()
-
-            #Creating UUID for each activity
-            actKey = list(fu.keys())[0][1]
-
-            #Create demand_array
-            lca.build_demand_array(fu)
-
-            #Create supply_array
-            lca.supply_array = lca.solve_linear_system()
-
-            #Save supply_array to HDF5 file
-            group_path_supply='/supply_array/'+actKey+'/'+str(iteration_name)
-            write_LCA_obj_to_HDF5_file(lca.supply_array,hdf5_file_MC_results,group_path_supply)
-            hdf5_file_MC_results[group_path_supply].attrs['Creation ID']=job_id
-
-            end_2 = time.time()
-            #print("Calcul et sauvegarde s en {} secondes for iteration {} and activity {}, and the storage size is s={}MB".format(end_2 - start_2,iteration,actKey,hdf5_file_MC_results[group_path_supply].id.get_storage_size()/1000000)) 
-
-        #Count the number of complete iterations
-        complete_iterations=iteration_name+1
-        hdf5_file_MC_results.attrs['Number of complete iterations']= complete_iterations
-            
-
-    hdf5_file_MC_results.close()
+        print("Process interrupted")
+        
+        
         
     return;
 
@@ -430,11 +462,11 @@ def Dependant_LCI_Monte_Carlo_results(project, database, iterations, cpus, outpu
 
     #Selection of activities for MC analysis
     db = Database(database)
-    #activities = [activity for activity in db]
-    act1=db.get('e929619f245df590fee5d72dc979cdd4')
-    act2=db.get('bdf7116059abfcc6b8b9ade1a641e578')
-    act3=db.get('c8c815c68836adaf964daaa001a638a3')
-    activities = [act1,act2,act3]
+    activities = [activity for activity in db]
+    #act1=db.get('e929619f245df590fee5d72dc979cdd4')
+    #act2=db.get('bdf7116059abfcc6b8b9ade1a641e578')
+    #act3=db.get('c8c815c68836adaf964daaa001a638a3')
+    #activities = [act1,act2,act3]
 
     #Create objects to pass the functional units = 1 for each activity
     functional_units = [ {act.key: 1} for act in activities ]
@@ -443,7 +475,7 @@ def Dependant_LCI_Monte_Carlo_results(project, database, iterations, cpus, outpu
     #Create or open the HDF5 file for useful information storage per DB
     path_for_saving=BASE_OUTPUT_DIR
     hdf5_file_name="Useful_info_per_DB.hdf5"
-    hdf5_file_useful_info_per_DB_path=path_for_saving+"\\"+hdf5_file_name
+    hdf5_file_useful_info_per_DB_path="{}\\{}".format(path_for_saving,hdf5_file_name)
     
     if os.path.isfile(hdf5_file_useful_info_per_DB_path)==False:
 
@@ -460,7 +492,7 @@ def Dependant_LCI_Monte_Carlo_results(project, database, iterations, cpus, outpu
     for worker_id in range(cpus):
         #Create or open the HDF5 file for each worker and write metadata
         hdf5_file_name="LCI_Dependant_Monte_Carlo_results_worker"+str(worker_id)+".hdf5"
-        hdf5_file_MC_results_path=BASE_OUTPUT_DIR+"\\"+hdf5_file_name
+        hdf5_file_MC_results_path="{}\\{}".format(BASE_OUTPUT_DIR,hdf5_file_name)
 
         hdf5_file_MC_results=h5py.File(hdf5_file_MC_results_path,'a')
 
@@ -477,12 +509,12 @@ def Dependant_LCI_Monte_Carlo_results(project, database, iterations, cpus, outpu
         
     return;
       
-        
+#Commande to launch it from the console : python database_wide_monte_carlo_hdf5_storage.py        
         
 #Useful when the code is run from the console to execute the main function
 if __name__ == '__main__':
     Dependant_LCI_Monte_Carlo_results(project="iw_integration",
                                       database="ecoinvent 3.3 cutoff",
-                                      iterations=10,
+                                      iterations=27,
                                       cpus=4,
-                                      output_dir="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Test Dependant LCI Monte Carlo - test 3")
+                                      output_dir="E:\\Brightway calculation\\ecoinvent 3.3 cutoff\\Dependant LCI Monte Carlo - reduce 100 iterations")

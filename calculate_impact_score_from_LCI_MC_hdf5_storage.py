@@ -12,6 +12,7 @@ import scipy as sp
 import h5py
 from bw2calc.matrices import MatrixBuilder
 from stats_arrays.random import MCRandomNumberGenerator
+#import Add_beta_4_params_distrib
 import random
 
 ##################
@@ -209,7 +210,7 @@ def clean_hdf5_file_MC_LCA_results(hdf5_file_MC_results,worker_id):
                         if results_iterations!=complete_iterations:
                             iteration_name_to_delete=results_iterations-1
                             del impact_method[1][str(iteration_name_to_delete)]
-                            print('--Incomplete iterations for LCA results removed for worker {} for activity {} and impact method'.format(worker_id,act[0],impact_method[0]))
+                            #print('--Incomplete iterations for LCA results removed for worker {} for activity {} and impact method'.format(worker_id,act[0],impact_method[0]))
                             
     return;
 
@@ -226,12 +227,13 @@ def gathering_MC_results_in_one_hdf5_file(path_for_saving):
 
         #Retrieve child file paths
         child_hdf5_file_paths = [os.path.join(path_for_saving,fn) for fn in next(os.walk(path_for_saving))[2] if '.hdf5' in fn]
-        child_MC_results_paths=[path for path in child_hdf5_file_paths if root_file_name+'_worker' in path]
+        child_MC_results_paths=[path for path in child_hdf5_file_paths if '{}_worker'.format(root_file_name) in path]
 
         if child_MC_results_paths!=[]:
         
             #Create the gathering file
-            hdf5_file_all_MC_results=h5py.File(path_for_saving+'\\'+root_file_name+'_ALL.hdf5','w')
+            hdf5_file_all_MC_results_path=os.path.join(path_for_saving,root_file_name,'_ALL.hdf5')
+            hdf5_file_all_MC_results=h5py.File(hdf5_file_all_MC_results_path,'w-')
 
             #Gathering MC results
             complete_iterations=0
@@ -240,7 +242,7 @@ def gathering_MC_results_in_one_hdf5_file(path_for_saving):
 
                 #Clean incomplete iterations before gathering 
                 child_hdf5_file=h5py.File(child_file_path,'a')
-                clean_hdf5_file_MC_LCA_results(child_hdf5_file,child_file_path.rsplit('\\', 1)[1])
+                clean_hdf5_file_MC_LCA_results(child_hdf5_file,child_file_path.rsplit('_worker', 1)[1])
                 child_hdf5_file.close()
 
                 child_hdf5_file=h5py.File(child_file_path,'r')
@@ -257,7 +259,7 @@ def gathering_MC_results_in_one_hdf5_file(path_for_saving):
                             #Create similar path for the master file
                             child_iteration_name=child_dataset_path.rsplit('/', 2)[1]
                             master_iteration_name=str(int(child_iteration_name)+complete_iterations)
-                            master_dataset_path=child_dataset_path.rsplit('/', 2)[0]+'/'+master_iteration_name+'/'+child_dataset_path.rsplit('/', 2)[2]
+                            master_dataset_path='{}/{}/{}'.format(child_dataset_path.rsplit('/', 2)[0],master_iteration_name,child_dataset_path.rsplit('/', 2)[2])
 
                             #Link child data to master file
                             hdf5_file_all_MC_results[master_dataset_path] = h5py.ExternalLink(child_file_path, child_dataset_path)
@@ -292,13 +294,16 @@ def worker_process(project,
                    functional_units,
                    collector_functional_unit,
                    hdf5_file_MC_LCI_results_path,
-                   hdf5_file_deterministic_lci_path,
+                   hdf5_file_deterministic_lci_path_agg,
+                   hdf5_file_deterministic_lci_path_disagg,
                    hdf5_file_MC_LCA_results_aggregated_path,
                    hdf5_file_MC_LCA_results_disaggregated_path,
                    impact_method_name_list,
                    results_disaggregated_or_not):
     
-    start_1 = time.time()
+    #start_1 = time.time()
+    
+    #import Add_beta_4_params_distrib
     
     projects.set_current(project)
     
@@ -311,7 +316,10 @@ def worker_process(project,
     else:
         hdf5_file_MC_LCA_results=h5py.File(hdf5_file_MC_LCA_results_aggregated_path,'a')
     
-    hdf5_file_deterministic_lci=h5py.File(hdf5_file_deterministic_lci_path,'r')
+    if results_disaggregated_or_not == "disaggregated":
+        hdf5_file_deterministic_lci=h5py.File(hdf5_file_deterministic_lci_path_disagg,'r')
+    else:
+        hdf5_file_deterministic_lci=h5py.File(hdf5_file_deterministic_lci_path_agg,'r')
     
     #Retrieve or set the number of LCA complete iterations (all activities calculated for one iteration)
     try:
@@ -337,7 +345,10 @@ def worker_process(project,
     #Construct the characterization useful info (cf_params and cf_rng) for all LCIA methods
     impact_method_dict={}
     
+    
     for impact_method_name in impact_method_name_list:
+
+        print(impact_method_name)
         
         method_filepath = [Method(impact_method_name).filepath_processed()]
 
@@ -358,13 +369,14 @@ def worker_process(project,
         impact_method_dict[impact_method_name]['characterization_matrix_deterministic']=characterization_matrix
     
    
-    end_1 = time.time()
-    print("Work per worker en {} secondes ".format(end_1 - start_1))
+    #end_1 = time.time()
+    #print("Work per worker en {} secondes ".format(end_1 - start_1))
     
     #LCA iterations
     for iteration in range(iterations):
         
-        start_2 = time.time()
+        #start_2 = time.time()
+        start_iteration = time.time()
         
         #Name of the iteration for the storage, starts from 0
         lca_iteration_name=lca_complete_iterations
@@ -375,7 +387,7 @@ def worker_process(project,
         lci_iteration_name=random.randint(0,lci_complete_iterations-1)
         
         #Retrieve B matrix for uncertainty LCI 1
-        biosphere_matrix=hdf5_to_csr_matrix(hdf5_file_MC_LCI_results,'/biosphere_matrix/'+str(lci_iteration_name))      
+        biosphere_matrix=hdf5_to_csr_matrix(hdf5_file_MC_LCI_results,'/biosphere_matrix/{}'.format(str(lci_iteration_name)))      
         
         #Regenerate the characterization_matrix for each iteration for all impact methods
         characterization_matrix_dict={}
@@ -396,13 +408,13 @@ def worker_process(project,
                 characterization_matrix_array=np.array(characterization_matrix.sum(1))
                 characterization_matrix_dict[impact_method_name]=characterization_matrix_array
             
-        end_2 = time.time()
-        print("Work per iteration en {} secondes for iteration {} ".format(end_2 - start_2, iteration))    
+        #end_2 = time.time()
+        #print("Work per iteration en {} secondes for iteration {} ".format(end_2 - start_2, iteration))    
             
         #Iterations per activity
         for act_index, fu in enumerate(functional_units):
             
-            start_3 = time.time()
+            #start_3 = time.time()
 
             #Creating UUID for each activity
             actKey = list(fu.keys())[0][1]
@@ -410,17 +422,17 @@ def worker_process(project,
             
             #Retrieve the inventory for uncertainty LCI 0
             if results_disaggregated_or_not == "disaggregated":
-                inventory_lci0_path='/inventory/'+actKey+'/disaggregated'
+                inventory_lci0_path='/inventory/{}'.format(actKey)
                 inventory_lci0=hdf5_to_csr_matrix(hdf5_file_deterministic_lci,inventory_lci0_path)
             else:
-                inventory_lci0_path='/inventory/'+actKey+'/aggregated'
+                inventory_lci0_path='/inventory/{}'.format(actKey)
                 inventory_lci0=hdf5_file_deterministic_lci[inventory_lci0_path][()]
 
             
             
             
             #Retrieve supply_array for uncertainty LCI 1
-            supply_array=hdf5_file_MC_LCI_results['/supply_array/'+actKey+'/'+str(lci_iteration_name)][()]
+            supply_array=hdf5_file_MC_LCI_results['/supply_array/{}/{}'.format(actKey,str(lci_iteration_name))][()]
             
             #Calculate inventory for uncertainty LCI 1 
             #For disaggregated results --> inventory is a csr matrix
@@ -434,21 +446,21 @@ def worker_process(project,
 
                 inventory = biosphere_matrix * supply_array 
             
-            end_3 = time.time()
-            print("Work per activity/iteration en {} secondes for iteration {} for activity {} ".format(end_3 - start_3, iteration, actKey))    
+            #end_3 = time.time()
+            #print("Work per activity/iteration en {} secondes for iteration {} for activity {} ".format(end_3 - start_3, iteration, actKey))    
             
             
             #Calculate impact scores for all impact categories and Store impact_score
             for impact_method_name in characterization_matrix_dict:
                 
-                start_4 = time.time()
+                #start_4 = time.time()
                 
                 characterization_matrix=characterization_matrix_dict[impact_method_name]
                 characterization_matrix_lcia0=impact_method_dict[impact_method_name]['characterization_matrix_deterministic']
                 
-                impact_score_path='/Uncertainty LCI 1 LCIA 1/'+actKey+'/'+str(impact_method_name)
-                impact_score_lcia0_path='/Uncertainty LCI 1 LCIA 0/'+actKey+'/'+str(impact_method_name)
-                impact_score_lci0_lcia1_path='/Uncertainty LCI 0 LCIA 1/'+actKey+'/'+str(impact_method_name)
+                impact_score_path='/Uncertainty LCI 1 LCIA 1/{}/{}'.format(actKey,str(impact_method_name))
+                impact_score_lcia0_path='/Uncertainty LCI 1 LCIA 0/{}/{}'.format(actKey,str(impact_method_name))
+                impact_score_lci0_lcia1_path='/Uncertainty LCI 0 LCIA 1/{}/{}'.format(actKey,str(impact_method_name))
                 
                 #For disaggregated results --> impact_score is a csr matrix of impact scores 
                 #disaggregated per direct contributing activity and direct contributing elementary flows
@@ -456,17 +468,17 @@ def worker_process(project,
                     
                     #Uncertainty LCI 1 LCIA 1
                     impact_score= characterization_matrix * inventory
-                    impact_score_path=impact_score_path+'/'+str(lca_iteration_name)
+                    impact_score_path='{}/{}'.format(impact_score_path,str(lca_iteration_name))
                     write_LCA_obj_to_HDF5_file(impact_score,hdf5_file_MC_LCA_results,impact_score_path)
                     
                     #Uncertainty LCI 1 LCIA 0
                     impact_score_lcia0= characterization_matrix_lcia0 * inventory
-                    impact_score_lcia0_path=impact_score_lcia0_path+'/'+str(lca_iteration_name)
+                    impact_score_lcia0_path='{}/{}'.format(impact_score_lcia0_path,str(lca_iteration_name))
                     write_LCA_obj_to_HDF5_file(impact_score_lcia0,hdf5_file_MC_LCA_results,impact_score_lcia0_path)
                     
                     #Uncertainty LCI 0 LCIA 1
                     impact_score_lci0_lcia1= characterization_matrix * inventory_lci0
-                    impact_score_lci0_lcia1_path=impact_score_lci0_lcia1_path+'/'+str(lca_iteration_name)
+                    impact_score_lci0_lcia1_path='{}/{}'.format(impact_score_lci0_lcia1_path,str(lca_iteration_name))
                     write_LCA_obj_to_HDF5_file(impact_score_lci0_lcia1,hdf5_file_MC_LCA_results,impact_score_lci0_lcia1_path)
                     
                     #store info on activities and EF?
@@ -488,8 +500,8 @@ def worker_process(project,
                     impact_score_lci0_lcia1= np.dot(characterization_matrix, inventory_lci0)
                     append_to_list_hdf5_dataset(hdf5_file_MC_LCA_results, impact_score_lci0_lcia1_path, np.atleast_1d(impact_score_lci0_lcia1))
                     
-                end_4 = time.time()
-                print("Work per impact method/activity/iteration en {} secondes for iteration {} for activity {} for impact method {}".format(end_4 - start_4, iteration, actKey, impact_method_name))    
+                #end_4 = time.time()
+                #print("Work per impact method/activity/iteration en {} secondes for iteration {} for activity {} for impact method {}".format(end_4 - start_4, iteration, actKey, impact_method_name))    
             
                         
             
@@ -501,17 +513,21 @@ def worker_process(project,
         #Count the number of complete iterations for LCA results
         lca_complete_iterations=lca_iteration_name+1
         hdf5_file_MC_LCA_results.attrs['Number of complete iterations']= lca_complete_iterations
+        
+        end_iteration = time.time()
+        print("Work per iteration en {} secondes for iteration {} for worker {} ".format(end_iteration - start_iteration, iteration,worker_id))
+                                            
             
                         
     #Size of stored objects
-    if results_disaggregated_or_not == "disaggregated":
-        group_path_techno=impact_score_path
-        hdf5_file_MC_results=hdf5_file_MC_LCA_results
-        size_results=(hdf5_file_MC_results[group_path_techno+'/data'].id.get_storage_size()+hdf5_file_MC_results[group_path_techno+'/indptr'].id.get_storage_size()+hdf5_file_MC_results[group_path_techno+'/indices'].id.get_storage_size())/1000000
-        print("Size of stored disaggregated results = {} MB for one impact method/activity/iteration ".format(size_results))
-    else: 
-        size_results=hdf5_file_MC_LCA_results[impact_score_path].id.get_storage_size()/1000000
-        print("Size of stored aggregated results = {} MB for {} complete iterations for one impact method/activity ".format(size_results, lca_complete_iterations))
+    #if results_disaggregated_or_not == "disaggregated":
+        #group_path_techno=impact_score_path
+        #hdf5_file_MC_results=hdf5_file_MC_LCA_results
+        #size_results=(hdf5_file_MC_results[group_path_techno+'/data'].id.get_storage_size()+hdf5_file_MC_results[group_path_techno+'/indptr'].id.get_storage_size()+hdf5_file_MC_results[group_path_techno+'/indices'].id.get_storage_size())/1000000
+        #print("Size of stored disaggregated results = {} MB for one impact method/activity/iteration ".format(size_results))
+    #else: 
+        #size_results=hdf5_file_MC_LCA_results[impact_score_path].id.get_storage_size()/1000000
+        #print("Size of stored aggregated results = {} MB for {} complete iterations for one impact method/activity ".format(size_results, lca_complete_iterations))
 
     
     hdf5_file_deterministic_lci.close()
@@ -523,8 +539,10 @@ def worker_process(project,
                 
                 
         
-def get_deterministic_inventory(collector_functional_unit, functional_units, hdf5_file_deterministic_lci, job_id):
-        
+def get_deterministic_inventory(collector_functional_unit, functional_units, hdf5_file_deterministic_lci, job_id,results_disaggregated_or_not):
+    
+    start_1 = time.time()
+    
     #Get metadata for the HDF5 file
     DB_name= list(functional_units[0].keys())[0][0]
     
@@ -551,17 +569,20 @@ def get_deterministic_inventory(collector_functional_unit, functional_units, hdf
         lca.lci()
         supply_array_lci0=lca.supply_array
         
-        #Calculate deterministic inventories. inventory_lci0_disaggregated is a csr matrix.
-        inventory_lci0_disaggregated = biosphere_matrix_lci0 * sparse.spdiags([supply_array_lci0], [0], count, count)
-        inventory_lci0_aggregated = biosphere_matrix_lci0 * supply_array_lci0
-        
-        #Store deterministic inventories
-        inventory_lci0_disaggregated_path='/inventory/'+actKey+'/disaggregated'
-        inventory_lci0_aggregated_path='/inventory/'+actKey+'/aggregated'
-        
-        write_LCA_obj_to_HDF5_file(inventory_lci0_disaggregated,hdf5_file_deterministic_lci,inventory_lci0_disaggregated_path)
-        write_LCA_obj_to_HDF5_file(inventory_lci0_aggregated,hdf5_file_deterministic_lci,inventory_lci0_aggregated_path)
+        #Calculate deterministic inventories. inventory_lci0_disaggregated is a csr matrix.and Store deterministic inventories
+        if results_disaggregated_or_not == "disaggregated":
+            inventory_lci0_disaggregated = biosphere_matrix_lci0 * sparse.spdiags([supply_array_lci0], [0], count, count)
+            inventory_lci0_disaggregated_path='/inventory/{}'.format(actKey)
+            write_LCA_obj_to_HDF5_file(inventory_lci0_disaggregated,hdf5_file_deterministic_lci,inventory_lci0_disaggregated_path)
+        else:
+            inventory_lci0_aggregated = biosphere_matrix_lci0 * supply_array_lci0
+            inventory_lci0_aggregated_path='/inventory/{}'.format(actKey)
+            write_LCA_obj_to_HDF5_file(inventory_lci0_aggregated,hdf5_file_deterministic_lci,inventory_lci0_aggregated_path)
+            
+    end_1 = time.time()
     
+    print('Deterministic LCI calculated in {} sec'.format(end_1-start_1))
+
     return;    
 
 
@@ -573,26 +594,30 @@ def Dependant_LCA_Monte_Carlo_results(project,
                                                  cpus, 
                                                  hdf5_file_MC_LCI_results_path, 
                                                  path_for_saving,
-                                                 impact_method_name_list,
+                                                 impact_method_name,
                                                  results_disaggregated_or_not):
     
     projects.set_current(project)
     bw2setup()
+    
+    impact_method_name_list=[ic_name for ic_name in methods if impact_method_name in str(ic_name)]
 
     #Path the write the results
     BASE_OUTPUT_DIR = path_for_saving
 
     #ID to identify who and when was the calculation made
     now = datetime.datetime.now()
-    job_id = "{}_{}-{}-{}_{}h{}".format(os.environ['COMPUTERNAME'],now.year, now.month, now.day, now.hour, now.minute)
+    COMPUTERNAME=os.environ['COMPUTERNAME'] #for Windows
+    #COMPUTERNAME='computer_name' #for linux
+    job_id = "{}_{}-{}-{}_{}h{}".format(COMPUTERNAME,now.year, now.month, now.day, now.hour, now.minute)
 
     #Selection of activities for MC analysis
     db = Database(database)
-    #activities = [activity for activity in db]
-    act1=db.get('e929619f245df590fee5d72dc979cdd4')
-    act2=db.get('bdf7116059abfcc6b8b9ade1a641e578')
-    act3=db.get('c8c815c68836adaf964daaa001a638a3')
-    activities = [act1,act2,act3]
+    activities = [activity for activity in db]
+    #act1=db.get('e929619f245df590fee5d72dc979cdd4')
+    #act2=db.get('bdf7116059abfcc6b8b9ade1a641e578')
+    #act3=db.get('c8c815c68836adaf964daaa001a638a3')
+    #activities = [act1,act2,act3]
     
     #Create objects to pass the functional units = 1 for each activity
     functional_units = [ {act.key: 1} for act in activities ]
@@ -600,12 +625,19 @@ def Dependant_LCA_Monte_Carlo_results(project,
     
     #Create and save all the useful information related to the deterministic version of the database
     path_for_saving=BASE_OUTPUT_DIR
-    hdf5_file_name="Deterministic_LCI.hdf5"
-    hdf5_file_deterministic_lci_path=path_for_saving+"\\"+hdf5_file_name
+    hdf5_file_name_agg="Deterministic_aggregated_LCI.hdf5"
+    hdf5_file_name_disagg="Deterministic_disaggregated_LCI.hdf5"
+    hdf5_file_deterministic_lci_path_agg=os.path.join(path_for_saving,hdf5_file_name_agg)
+    hdf5_file_deterministic_lci_path_disagg=os.path.join(path_for_saving,hdf5_file_name_disagg)
+    
+    if results_disaggregated_or_not == "disaggregated":
+        hdf5_file_deterministic_lci_path=hdf5_file_deterministic_lci_path_disagg
+    else:
+        hdf5_file_deterministic_lci_path=hdf5_file_deterministic_lci_path_agg
     
     if os.path.isfile(hdf5_file_deterministic_lci_path)==False:
         hdf5_file_deterministic_lci=h5py.File(hdf5_file_deterministic_lci_path,'a')
-        get_deterministic_inventory(collector_functional_unit, functional_units, hdf5_file_deterministic_lci, job_id)
+        get_deterministic_inventory(collector_functional_unit, functional_units, hdf5_file_deterministic_lci, job_id,results_disaggregated_or_not)
         hdf5_file_deterministic_lci.close()
     
     #Code to slipt the work between each CPUs of the computer (called workers). The work refers here to the dependant LCI MC for each activity 
@@ -613,10 +645,10 @@ def Dependant_LCA_Monte_Carlo_results(project,
 
     for worker_id in range(cpus):
         #Create or open the HDF5 file for each worker and write metadata
-        hdf5_file_name="LCA_Dependant_Monte_Carlo_aggregated_results_worker"+str(worker_id)+".hdf5"
-        hdf5_file_MC_LCA_results_aggregated_path=BASE_OUTPUT_DIR+"\\"+hdf5_file_name
-        hdf5_file_name="LCA_Dependant_Monte_Carlo_disaggregated_results_worker"+str(worker_id)+".hdf5"
-        hdf5_file_MC_LCA_results_disaggregated_path=BASE_OUTPUT_DIR+"\\"+hdf5_file_name
+        hdf5_file_name="LCA_Dependant_Monte_Carlo_aggregated_results_worker{}.hdf5".format(str(worker_id))
+        hdf5_file_MC_LCA_results_aggregated_path=os.path.join(BASE_OUTPUT_DIR,hdf5_file_name)
+        hdf5_file_name="LCA_Dependant_Monte_Carlo_disaggregated_results_worker{}.hdf5".format(str(worker_id))
+        hdf5_file_MC_LCA_results_disaggregated_path=os.path.join(BASE_OUTPUT_DIR,hdf5_file_name)
         
         if results_disaggregated_or_not == "disaggregated":
             hdf5_file_MC_results=h5py.File(hdf5_file_MC_LCA_results_disaggregated_path,'a')
@@ -636,7 +668,8 @@ def Dependant_LCA_Monte_Carlo_results(project,
                                                         functional_units,
                                                         collector_functional_unit,
                                                         hdf5_file_MC_LCI_results_path,
-                                                        hdf5_file_deterministic_lci_path,
+                                                        hdf5_file_deterministic_lci_path_agg,
+                                                        hdf5_file_deterministic_lci_path_disagg,
                                                         hdf5_file_MC_LCA_results_aggregated_path,
                                                         hdf5_file_MC_LCA_results_disaggregated_path,
                                                         impact_method_name_list,
@@ -651,10 +684,10 @@ def Dependant_LCA_Monte_Carlo_results(project,
 if __name__ == '__main__':
     Dependant_LCA_Monte_Carlo_results(project="iw_integration", 
                                       database="ecoinvent 3.3 cutoff", 
-                                      iterations=5, 
+                                      iterations=2, 
                                       cpus=1, 
-                                      hdf5_file_MC_LCI_results_path="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Test Dependant LCI Monte Carlo - test 3\\LCI_Dependant_Monte_Carlo_results_ALL.hdf5", 
-                                      path_for_saving="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Test Dependant LCA Monte Carlo - test 1",
-                                      impact_method_name_list=[("CML 2001", "climate change", "GWP 100a"),("CML 2001", "eutrophication potential", "generic")],
-                                      results_disaggregated_or_not="disaggregated")
+                                      hdf5_file_MC_LCI_results_path="E:\\Brightway calculation\\ecoinvent 3.3 cutoff\\Dependant LCI Monte Carlo - reduce iterations for test\\LCI_Dependant_Monte_Carlo_results_ALL.hdf5", 
+                                      path_for_saving="E:\\Brightway calculation\\ecoinvent 3.3 cutoff\\Dependant LCA Monte Carlo - reduce iterations for test",
+                                      impact_method_name='IMPACTWorld+ (Default_Recommended_Endpoint 1_36)',
+                                      results_disaggregated_or_not="aggregated")
 
