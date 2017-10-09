@@ -12,7 +12,7 @@ import scipy as sp
 import h5py
 from bw2calc.matrices import MatrixBuilder
 from stats_arrays.random import MCRandomNumberGenerator
-#import Add_beta_4_params_distrib
+import Add_beta_4_params_distrib
 import random
 
 ##################
@@ -613,11 +613,11 @@ def Dependant_LCA_Monte_Carlo_results(project,
 
     #Selection of activities for MC analysis
     db = Database(database)
-    activities = [activity for activity in db]
-    #act1=db.get('e929619f245df590fee5d72dc979cdd4')
-    #act2=db.get('bdf7116059abfcc6b8b9ade1a641e578')
-    #act3=db.get('c8c815c68836adaf964daaa001a638a3')
-    #activities = [act1,act2,act3]
+    #activities = [activity for activity in db]
+    act1=db.get('e929619f245df590fee5d72dc979cdd4')
+    act2=db.get('bdf7116059abfcc6b8b9ade1a641e578')
+    act3=db.get('c8c815c68836adaf964daaa001a638a3')
+    activities = [act1,act2,act3]
     
     #Create objects to pass the functional units = 1 for each activity
     functional_units = [ {act.key: 1} for act in activities ]
@@ -684,10 +684,10 @@ def Dependant_LCA_Monte_Carlo_results(project,
 if __name__ == '__main__':
     Dependant_LCA_Monte_Carlo_results(project="iw_integration", 
                                       database="ecoinvent 3.3 cutoff", 
-                                      iterations=2, 
-                                      cpus=1, 
-                                      hdf5_file_MC_LCI_results_path="E:\\Brightway calculation\\ecoinvent 3.3 cutoff\\Dependant LCI Monte Carlo - reduce iterations for test\\LCI_Dependant_Monte_Carlo_results_ALL.hdf5", 
-                                      path_for_saving="E:\\Brightway calculation\\ecoinvent 3.3 cutoff\\Dependant LCA Monte Carlo - reduce iterations for test",
+                                      iterations=250, 
+                                      cpus=4, 
+                                      hdf5_file_MC_LCI_results_path="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Test Dependant LCI Monte Carlo - test 3\\LCI_Dependant_Monte_Carlo_results_ALL.hdf5", 
+                                      path_for_saving="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Test Dependant LCA Monte Carlo - test 3",
                                       impact_method_name='IMPACTWorld+ (Default_Recommended_Endpoint 1_36)',
                                       results_disaggregated_or_not="aggregated")
 
