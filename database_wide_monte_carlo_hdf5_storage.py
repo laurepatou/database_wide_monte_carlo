@@ -448,7 +448,7 @@ def get_useful_info(collector_functional_unit, hdf5_file_useful_info_per_DB, job
 
 
 #Create and save useful information during Dependant LCI MC : database objects (_dict, activities, _params, reverse_dict), iteration objects (_sample, i.e. A and B _matrix), act/iteration objects (supply_array)    
-def Dependant_LCI_Monte_Carlo_results(project, database, iterations, cpus, output_dir):
+def Dependant_LCI_Monte_Carlo_results(project, database, iterations, cpus, activity_category_ID, output_dir):
     
     projects.set_current(project)
     bw2setup()
@@ -462,7 +462,7 @@ def Dependant_LCI_Monte_Carlo_results(project, database, iterations, cpus, outpu
 
     #Selection of activities for MC analysis
     db = Database(database)
-    activities = [activity for activity in db]
+    activities = [activity for activity in db if activity_category_ID in str(activity['classifications'])]
     #act1=db.get('e929619f245df590fee5d72dc979cdd4')
     #act2=db.get('bdf7116059abfcc6b8b9ade1a641e578')
     #act3=db.get('c8c815c68836adaf964daaa001a638a3')
@@ -515,6 +515,7 @@ def Dependant_LCI_Monte_Carlo_results(project, database, iterations, cpus, outpu
 if __name__ == '__main__':
     Dependant_LCI_Monte_Carlo_results(project="iw_integration",
                                       database="ecoinvent 3.3 cutoff",
-                                      iterations=27,
+                                      iterations=250,
                                       cpus=4,
-                                      output_dir="E:\\Brightway calculation\\ecoinvent 3.3 cutoff\\Dependant LCI Monte Carlo - reduce 100 iterations")
+                                      activity_category_ID="19a",
+                                      output_dir="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Dependant LCI Monte Carlo - sector 19a")

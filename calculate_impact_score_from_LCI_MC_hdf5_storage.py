@@ -331,8 +331,8 @@ def worker_process(project,
         
     
     #Clean incomplete iterations if needed
-    if lca_complete_iterations>0:
-        clean_hdf5_file_MC_LCA_results(hdf5_file_MC_LCA_results,worker_id)
+    #if lca_complete_iterations>0:
+    #    clean_hdf5_file_MC_LCA_results(hdf5_file_MC_LCA_results,worker_id)
     
     
     #Retrieve biosphere_dict and activity_dict
@@ -591,7 +591,8 @@ def get_deterministic_inventory(collector_functional_unit, functional_units, hdf
 def Dependant_LCA_Monte_Carlo_results(project, 
                                                  database, 
                                                  iterations, 
-                                                 cpus, 
+                                                 cpus,
+                                      activity_category_ID,
                                                  hdf5_file_MC_LCI_results_path, 
                                                  path_for_saving,
                                                  impact_method_name,
@@ -613,11 +614,11 @@ def Dependant_LCA_Monte_Carlo_results(project,
 
     #Selection of activities for MC analysis
     db = Database(database)
-    #activities = [activity for activity in db]
-    act1=db.get('e929619f245df590fee5d72dc979cdd4')
-    act2=db.get('bdf7116059abfcc6b8b9ade1a641e578')
-    act3=db.get('c8c815c68836adaf964daaa001a638a3')
-    activities = [act1,act2,act3]
+    activities = [activity for activity in db if activity_category_ID in str(activity['classifications'])]
+    #act1=db.get('e929619f245df590fee5d72dc979cdd4')
+    #act2=db.get('bdf7116059abfcc6b8b9ade1a641e578')
+    #act3=db.get('c8c815c68836adaf964daaa001a638a3')
+    #activities = [act1,act2,act3]
     
     #Create objects to pass the functional units = 1 for each activity
     functional_units = [ {act.key: 1} for act in activities ]
@@ -684,10 +685,11 @@ def Dependant_LCA_Monte_Carlo_results(project,
 if __name__ == '__main__':
     Dependant_LCA_Monte_Carlo_results(project="iw_integration", 
                                       database="ecoinvent 3.3 cutoff", 
-                                      iterations=250, 
-                                      cpus=4, 
-                                      hdf5_file_MC_LCI_results_path="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Test Dependant LCI Monte Carlo - test 3\\LCI_Dependant_Monte_Carlo_results_ALL.hdf5", 
-                                      path_for_saving="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Test Dependant LCA Monte Carlo - test 3",
+                                      iterations=1000, 
+                                      cpus=4,
+                                      activity_category_ID="19a",
+                                      hdf5_file_MC_LCI_results_path="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Dependant LCI Monte Carlo - sector 19a\\LCI_Dependant_Monte_Carlo_results_ALL.hdf5", 
+                                      path_for_saving="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Dependant LCA Monte Carlo - sector 19a",
                                       impact_method_name='IMPACTWorld+ (Default_Recommended_Endpoint 1_36)',
                                       results_disaggregated_or_not="aggregated")
 
