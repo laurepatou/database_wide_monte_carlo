@@ -14,6 +14,7 @@ from bw2calc.matrices import MatrixBuilder
 from stats_arrays.random import MCRandomNumberGenerator
 import Add_beta_4_params_distrib
 import random
+#import stats_arrays
 
 ##################
 # HDF5 functions #
@@ -286,6 +287,29 @@ def gathering_MC_results_in_one_hdf5_file(path_for_saving):
     return;
     
 
+#LCIA correlation
+def generate_corr_CF(corr_twin_ef_input_output,biosphere_dict,cf_params,cf_values):
+    
+    cf_dict={cf_param['row']:cf_value for cf_param,cf_value in zip(cf_params,cf_values)}
+    
+    set_efs=set([key[1] for key in biosphere_dict.keys()])    
+    corr_twin_indices_dict={biosphere_dict[('biosphere3',code[0])]:biosphere_dict[('biosphere3',code[1])] for code in corr_twin_ef_input_output if (code[0] in set_efs and code[1] in set_efs)}
+    
+    for row,cf_value in cf_dict.items():
+        
+        try:
+            row_output=corr_twin_indices_dict[row]
+            cf_dict[row_output]=cf_value*(-1)
+            
+        except KeyError:
+            continue
+    
+    cf_values=np.array([value for value in cf_dict.values()])
+    
+    return cf_values;
+
+
+
 #Dependant LCA Monte Carlo for each activity and functional unit defined in functional_units = [{act.key: 1}]
 def worker_process(project, 
                    job_id, 
@@ -306,6 +330,17 @@ def worker_process(project,
     #import Add_beta_4_params_distrib
     
     projects.set_current(project)
+    
+    #for LCIA correlation: land transformation
+    biosphere3=Database('biosphere3')
+    land_transfo_efs=[ef for ef in biosphere3 if 'Transformation, ' in str(ef)]
+    land_transfo_input={ef['name'].rsplit('Transformation, from ',1)[1]:ef for ef in land_transfo_efs if ', from' in str(ef)}
+    land_transfo_output={ef['name'].rsplit('Transformation, to ',1)[1]:ef for ef in land_transfo_efs if ', to' in str(ef)}
+    corr_twin_land_transfo=[(land_transfo_input[end_name]['code'],land_transfo_output[end_name]['code']) for end_name in land_transfo_input.keys()]
+    
+    lca_1 = LCA(functional_units[0])
+    lca_1.lci()
+
     
     #Open the HDF5 files for each worker to write LCA results
     hdf5_file_MC_LCI_results=h5py.File(hdf5_file_MC_LCI_results_path,'r')
@@ -331,8 +366,8 @@ def worker_process(project,
         
     
     #Clean incomplete iterations if needed
-    #if lca_complete_iterations>0:
-    #    clean_hdf5_file_MC_LCA_results(hdf5_file_MC_LCA_results,worker_id)
+    if lca_complete_iterations>0:
+        clean_hdf5_file_MC_LCA_results(hdf5_file_MC_LCA_results,worker_id)
     
     
     #Retrieve biosphere_dict and activity_dict
@@ -396,8 +431,16 @@ def worker_process(project,
             
             cf_params=impact_method_dict[impact_method_name]['cf_params']
             cf_rng=impact_method_dict[impact_method_name]['cf_rng']
+            cf_values=cf_rng.next()
             
-            characterization_matrix = MatrixBuilder.build_diagonal_matrix(cf_params, _biosphere_dict,"row", "row", new_data=cf_rng.next())#For disaggregated results
+            #LCIA correlation: land transformation
+            corr_twin_ef_input_output=corr_twin_land_transfo
+            biosphere_dict=lca_1.biosphere_dict
+
+            cf_values=generate_corr_CF(corr_twin_ef_input_output,biosphere_dict,cf_params,cf_values)
+            
+            
+            characterization_matrix = MatrixBuilder.build_diagonal_matrix(cf_params, _biosphere_dict,"row", "row", new_data=cf_values)#For disaggregated results
             
             #For disaggregated results
             if results_disaggregated_or_not == "disaggregated":
@@ -535,6 +578,7 @@ def worker_process(project,
     hdf5_file_MC_LCA_results.close()
     
     return;
+                       
                         
                 
                 
@@ -685,11 +729,11 @@ def Dependant_LCA_Monte_Carlo_results(project,
 if __name__ == '__main__':
     Dependant_LCA_Monte_Carlo_results(project="iw_integration", 
                                       database="ecoinvent 3.3 cutoff", 
-                                      iterations=1000, 
+                                      iterations=1250, 
                                       cpus=4,
                                       activity_category_ID="19a",
-                                      hdf5_file_MC_LCI_results_path="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Dependant LCI Monte Carlo - sector 19a\\LCI_Dependant_Monte_Carlo_results_ALL.hdf5", 
-                                      path_for_saving="D:\\Dossiers professionnels\\Logiciels\\Brightway 2\\Dependant LCA Monte Carlo - sector 19a",
+                                      hdf5_file_MC_LCI_results_path="D:\\Dropbox (MAGI)\\Dossiers professionnels\\Logiciels\\Brightway 2\\Monte Carlo results_with correlation\\Dependant LCI Monte Carlo - sector 19a\\LCI_Dependant_Monte_Carlo_results_ALL.hdf5", 
+                                      path_for_saving="D:\\Dropbox (MAGI)\\Dossiers professionnels\\Logiciels\\Brightway 2\\Monte Carlo results_with correlation\\Dependant LCA Monte Carlo - sector 19a",
                                       impact_method_name='IMPACTWorld+ (Default_Recommended_Endpoint 1_36)',
                                       results_disaggregated_or_not="aggregated")
 

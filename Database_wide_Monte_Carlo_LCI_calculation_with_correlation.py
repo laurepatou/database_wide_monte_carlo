@@ -10,6 +10,7 @@ import pickle
 import click
 import scipy as sp
 import h5py
+import stats_arrays
 
 """
 Used to generate uncertainty information at the database level.
